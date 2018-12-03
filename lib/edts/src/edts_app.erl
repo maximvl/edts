@@ -39,6 +39,8 @@
 
 %%%_* Defines ==================================================================
 
+-define(EDTS_PORT, 4587).
+
 %%%_* Types ====================================================================
 
 %%%_* API ======================================================================
@@ -53,11 +55,26 @@ start() ->
   ok = ensure_application_started(compiler),
   ok = ensure_application_started(syntax_tools),
 
+  %% Cowboy requirements
+  ok = ensure_application_started(cowlib),
+  ok = ensure_application_started(asn1),
+  ok = ensure_application_started(public_key),
+  ok = ensure_application_started(ssl),
+  ok = ensure_application_started(ranch),
+
   ok = ensure_application_started(edts).
 
 
 %% Application callbacks
 start(_StartType, _Start) ->
+  Dispatch = cowboy_router:compile([
+                                    {'_', [{'_', edts_cowboy, []}]}
+                                   ]),
+
+  {ok, _} = cowboy:start_clear(edts_api, [{port, ?EDTS_PORT}],
+                               #{env => #{dispatch => Dispatch}}
+                              ),
+
   edts_sup:start_link().
 
 stop(_State) ->
@@ -90,4 +107,3 @@ ensure_application_started(AppName) ->
 %%% allout-layout: t
 %%% erlang-indent-level: 2
 %%% End:
-

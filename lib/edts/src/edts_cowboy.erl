@@ -2,6 +2,7 @@
 %%% @doc Top-level edts supervisor.
 %%% @end
 %%% @author Thomas Järvstrand <tjarvstrand@gmail.com>
+%%% @editor Maxim Velesyuk <max.velesyuk@gmail.com>
 %%% @copyright
 %%% Copyright 2012 Thomas Järvstrand <tjarvstrand@gmail.com>
 %%%
@@ -21,123 +22,122 @@
 %%% along with EDTS. If not, see <http://www.gnu.org/licenses/>.
 %%% @end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--module(edts_mochiweb).
 
+-module(edts_cowboy).
 
--export([start_link/0,
+-export([init/2,
          handle_request/1]).
-
--compile({no_auto_import,[error/2]}).
 
 %%%_* Includes =================================================================
 %%%_* Defines ==================================================================
 
--define(EDTS_PORT, 4587).
+
 
 %%%_* Types ====================================================================
 %%%_* API ======================================================================
 
-start_link() ->
-  mochiweb_http:start_link([{name, ?MODULE},
-                            {loop, fun ?MODULE:handle_request/1},
-                            {port, ?EDTS_PORT}]).
-
+init(Req, State) ->
+  Req1 = handle_request(Req),
+  {ok, Req1, State}.
 
 handle_request(Req) ->
   try
-    case mochiweb_request:get(method, Req) of
-      'POST' ->
+    case cowboy_req:method(Req) of
+      <<"POST">> ->
         case do_handle_request(Req) of
-          ok ->
-            ok(Req);
-          {ok, Data} ->
-            ok(Req, Data);
-          {error, {not_found, Term}} ->
-            error(Req, not_found, Term)
+          {ok, Req1} ->
+            ok_reply(Req1);
+          {{ok, Data}, Req1} ->
+            ok_reply(Req1, Data);
+          {{error, {not_found, Term}}, Req1} ->
+            error_reply(Req1, not_found, Term)
         end;
       _ ->
-        error(Req, method_not_allowed)
+        error_reply(Req, method_not_allowed)
     end
   catch
     Class:Reason:Trace ->
-      error(Req,
+      error_reply(Req,
             internal_server_error,
             [{class, format_term(Class)},
              {reason, format_term(Reason)},
              {stack_trace, format_term(Trace)}])
   end.
 
+
 format_term(Term) ->
   list_to_binary(lists:flatten(io_lib:format("~p", [Term]))).
 
 do_handle_request(Req) ->
-  case [list_to_atom(E) || E <- string:tokens(mochiweb_request:get(path, Req), "/")] of
+  %% ignore leading /
+  [_ | Split] = binary:split(cowboy_req:path(Req), <<"/">>, [global]),
+  case [ binary_to_atom(B, unicode) || B <- Split ] of
     [Command] ->
-      edts_cmd:run(Command, get_input_context(Req));
+      {Input, Req1} = get_input_context(Req),
+      {edts_cmd:run(Command, Input), Req1};
     [plugins, Plugin, Command] ->
-      edts_cmd:plugin_run(Plugin, Command, get_input_context(Req));
+      {Input, Req1} = get_input_context(Req),
+      {edts_cmd:plugin_run(Plugin, Command, Input), Req1};
     Path ->
-      {error, {not_found, [{path, list_to_binary(Path)}]}}
+      {{error, {not_found, [{path, list_to_binary(Path)}]}}, Req}
   end.
 
 get_input_context(Req) ->
-  case mochiweb_request:recv_body(Req) of
-    undefined ->
-      orddict:new();
-    <<"null">> ->
-      orddict:new();
-    Body ->
-      orddict:from_list(
-        decode_element(
-          mochijson2:decode(
-            binary_to_list(Body), [{format, proplist}])))
+  case cowboy_req:read_body(Req) of
+    {ok, Body, Req1} ->
+      error_logger:error_report(["body: ", Body]),
+      Decoded = case Body of
+                  <<"null">> -> [];
+                  <<"">> -> [];
+                  _ -> mochijson2:decode(binary_to_list(Body), [{format, proplist}])
+                end,
+      Ret = orddict:from_list(decode_element(Decoded)),
+      {Ret, Req1};
+    _ -> {orddict:new(), Req}
   end.
 
 decode_element([{_, _}|_] = Element) ->
-  lists:map(fun({K, V}) ->
-                {list_to_atom(binary_to_list(K)), decode_element(V)}
-            end,
-            Element);
+  [{list_to_atom(binary_to_list(K)), decode_element(V)} || {K, V} <- Element];
 decode_element(Element) when is_list(Element) ->
-  lists:map(fun decode_element/1, Element);
+  [decode_element(E) || E <- Element];
 decode_element(Element) when is_binary(Element) ->
   binary_to_list(Element);
 decode_element(Element) ->
   Element.
 
-ok(Req) ->
-  ok(Req, undefined).
+ok_reply(Req) ->
+  ok_reply(Req, undefined).
 
-ok(Req, Data) ->
+ok_reply(Req, Data) ->
   respond(Req, 200, Data).
 
-error(Req, Error) ->
-  error(Req, Error, []).
+error_reply(Req, Error) ->
+  error_reply(Req, Error, []).
 
-error(Req, not_found, Data) ->
-  error(Req, 404, "Not Found", Data);
-error(Req, method_not_allowed, Data) ->
-  error(Req, 405, "Method Not Allowed", Data);
+error_reply(Req, not_found, Data) ->
+  error_reply(Req, 404, "Not Found", Data);
+error_reply(Req, method_not_allowed, Data) ->
+  error_reply(Req, 405, "Method Not Allowed", Data);
 
-error(Req, internal_server_error, Data) ->
-  error(Req, 500, "Internal Server Error", Data);
-error(Req, Error, _Data) ->
+error_reply(Req, internal_server_error, Data) ->
+  error_reply(Req, 500, "Internal Server Error", Data);
+error_reply(Req, Error, _Data) ->
   ErrorString = "Internal Server Error: Unknown error " ++ atom_to_list(Error),
-  error(Req, 500, ErrorString, []).
+  error_reply(Req, 500, ErrorString, []).
 
-error(Req, Code, Message, Data) ->
+error_reply(Req, Code, Message, Data) ->
   Body = [{code,    Code},
           {message, list_to_binary(Message)},
           {data,    Data}],
   respond(Req, Code, Body).
 
 respond(Req, Code, Data) ->
-  Headers = [{"Content-Type", "application/json"}],
+  Headers = #{<<"Content-Type">> => <<"application/json">>},
   BodyString = case Data of
                  undefined -> "";
                  _         -> mochijson2:encode(Data)
                end,
-  mochiweb_request:respond({Code, Headers, BodyString}, Req).
+  cowboy_req:reply(Code, Headers, BodyString, Req).
 
 %%%_* Emacs ====================================================================
 %%% Local Variables:
