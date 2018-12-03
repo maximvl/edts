@@ -1,0 +1,4 @@
+:name "edts-dev"
+:node-sname "edts-dev"
+:lib-dirs '("_build" "test")
+:app-include-dirs '("include")
