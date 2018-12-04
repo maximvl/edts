@@ -61,8 +61,19 @@ underneath a project root to be subprojects of that super project.")
   (when (f-this-file)
     (let ((dir (or dir (f-dirname (f-this-file)))))
       (or (edts-project--find-project-root dir)
+          (edts-project--find-rebar3-root dir)
           (edts-project--find-otp-root dir)
           (edts-project--find-temp-root dir)))))
+
+(defun edts-project--find-rebar3-root (dir)
+  "Try to find rebar-base project root, we go up until we hit 'src' directory"
+  (if (s-suffix-p "/src" dir)
+      (let* ((maybe-root (f-dirname dir))
+             (rebar-config (f-join maybe-root "rebar.config")))
+        (when (f-file? rebar-config)
+          maybe-root))
+    (when (cl-search "/src/" dir)
+      (edts-project--find-rebar3-root (f-dirname dir)))))
 
 (defun edts-project--find-project-root (dir)
   "Try to find the top-most edts-file above current buffer's file."
@@ -110,7 +121,8 @@ buffer's file."
 
 (defun edts-project--init-project (dir)
   "Initializes the EDTS project in ROOT."
-  (-when-let (root (edts-project--find-project-root dir))
+  (-when-let (root (or (edts-project--find-project-root dir)
+                       (edts-project--find-rebar3-root dir)))
     (!edts-alist-store root
                        (-> (edts-project--build-project-config root)
                            edts-project--derive-attributes
@@ -127,6 +139,7 @@ buffer's file."
   (let ((name (f-filename root)))
     `((:name       . ,name)
       (:node-sname . ,name)
+      (:app-include-dirs . ("include"))
       ;; Default lib dirs
       ;; * deps: dependencies included by rebar2
       ;; * _build/test/lib: test scope dependencies from rebar3
