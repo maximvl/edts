@@ -170,7 +170,8 @@ check_modules(Modules0, Checks) ->
           {error, _}               -> false
         end
     end,
-  Modules = lists:filter(MaybeReloadFun, Modules0),
+  Modules01 = lists:filter(MaybeReloadFun, Modules0),
+  Modules = [M || M <- Modules01, string:str(atom_to_list(M), "Elixir.") /= 1],
   update(),
   update_modules(Modules),
   Files = [proplists:get_value(source, M:module_info(compile)) || M <- Modules],
