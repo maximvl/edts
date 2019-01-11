@@ -241,8 +241,10 @@ buffer's file."
     (:node-sname . stringp)
     (:otp-path . stringp)
     (:project-include-dirs . edts-project--string-list?)
+    (:project-compile-dir . stringp)
     (:start-command . stringp)
-    (:type . symbolp)))
+    (:type . symbolp)
+    ))
 
 (defun edts-project--string-list? (value)
   (and (listp value)

@@ -47,6 +47,7 @@ start_link() ->
 
 handle_request(Req) ->
   try
+    %% case Req:get(method) of
     case mochiweb_request:get(method, Req) of
       'POST' ->
         case do_handle_request(Req) of
@@ -85,6 +86,7 @@ do_handle_request(Req) ->
 
 get_input_context(Req) ->
   case mochiweb_request:recv_body(Req) of
+  %% case Req:recv_body() of
     undefined ->
       orddict:new();
     <<"null">> ->
@@ -141,6 +143,7 @@ respond(Req, Code, Data) ->
                  _         -> mochijson2:encode(Data)
                end,
   mochiweb_request:respond({Code, Headers, BodyString}, Req).
+  %% Req:respond({Code, Headers, BodyString}).
 
 %%%_* Internal functions =======================================================
 
