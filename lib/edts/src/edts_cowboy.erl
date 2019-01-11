@@ -56,7 +56,8 @@ handle_request(Req) ->
         error_reply(Req, method_not_allowed)
     end
   catch
-    Class:Reason:Trace ->
+    Class:Reason ->
+      Trace = erlang:get_stacktrace(),
       error_reply(Req,
             internal_server_error,
             [{class, format_term(Class)},

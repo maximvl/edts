@@ -1,4 +1,4 @@
 :name "edts-dev"
 :node-sname "edts-dev"
-:lib-dirs '("_build" "test")
+:lib-dirs '("_build/default/lib" "test")
 :app-include-dirs '("include")

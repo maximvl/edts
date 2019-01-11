@@ -336,18 +336,23 @@ find_beam(Mod) ->
 
 try_add_module(Mod, Beam) ->
   try
-    Opts = proplists:get_value(options, Mod:module_info(compile)),
-    case Opts =/= undefined andalso lists:member(debug_info, Opts) of
-      true ->
-        case xref:add_module(?SERVER, Beam) of
-          {ok, Mod} -> ok;
-          {error, _ErrSrc, Err} ->
-            error_logger:error_msg("xref failed to add ~p: ~p", [Mod, Err]),
-            {error, Err}
-        end;
+    IsElixirMod = string:str(atom_to_list(Mod), "Elixir.") == 1,
+    case IsElixirMod of
+      true -> {error, elixir_module};
       false ->
-         error_logger:error_msg("xref can't add ~p: no debug-info", [Mod]),
-        {error, {no_beam, Mod}}
+        Opts = proplists:get_value(options, Mod:module_info(compile)),
+        case Opts =/= undefined andalso lists:member(debug_info, Opts) of
+          true ->
+            case xref:add_module(?SERVER, Beam) of
+              {ok, Mod} -> ok;
+              {error, _ErrSrc, Err} ->
+                error_logger:error_msg("xref failed to add ~p: ~p", [Mod, Err]),
+                {error, Err}
+            end;
+          false ->
+            error_logger:error_msg("xref can't add ~p: no debug-info", [Mod]),
+            {error, {no_beam, Mod}}
+        end
     end
   catch
     error:undef ->
@@ -525,4 +530,3 @@ compile_and_add_test_module(SrcDir, OutDir, Mod) ->
 %%% allout-layout: t
 %%% erlang-indent-level: 2
 %%% End:
-

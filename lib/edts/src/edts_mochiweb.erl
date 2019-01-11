@@ -45,6 +45,7 @@ start_link() ->
 
 handle_request(Req) ->
   try
+    %% case Req:get(method) of
     case mochiweb_request:get(method, Req) of
       'POST' ->
         case do_handle_request(Req) of
@@ -59,18 +60,19 @@ handle_request(Req) ->
         error(Req, method_not_allowed)
     end
   catch
-    Class:Reason:Trace ->
+    Class:Reason ->
       error(Req,
             internal_server_error,
             [{class, format_term(Class)},
              {reason, format_term(Reason)},
-             {stack_trace, format_term(Trace)}])
+             {stack_trace, format_term(erlang:get_stacktrace())}])
   end.
 
 format_term(Term) ->
   list_to_binary(lists:flatten(io_lib:format("~p", [Term]))).
 
 do_handle_request(Req) ->
+  %% case [list_to_atom(E) || E <- string:tokens(Req:get(path), "/")] of
   case [list_to_atom(E) || E <- string:tokens(mochiweb_request:get(path, Req), "/")] of
     [Command] ->
       edts_cmd:run(Command, get_input_context(Req));
@@ -82,6 +84,7 @@ do_handle_request(Req) ->
 
 get_input_context(Req) ->
   case mochiweb_request:recv_body(Req) of
+  %% case Req:recv_body() of
     undefined ->
       orddict:new();
     <<"null">> ->
@@ -138,6 +141,7 @@ respond(Req, Code, Data) ->
                  _         -> mochijson2:encode(Data)
                end,
   mochiweb_request:respond({Code, Headers, BodyString}, Req).
+  %% Req:respond({Code, Headers, BodyString}).
 
 %%%_* Emacs ====================================================================
 %%% Local Variables:
