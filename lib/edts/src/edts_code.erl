@@ -52,6 +52,7 @@
          project_specific_data_file/1,
          start/0,
          started_p/0,
+         rebar3_find_outdir/1,
          string_to_mfa/1]).
 
 %%%_* Defines ==================================================================
@@ -123,13 +124,16 @@ compile_and_load(File0, Opts) ->
   OutDir  = get_compile_outdir(File0),
   reload_if_modified(File0, OutDir),
   OldOpts = extract_compile_opts(File),
+  RebarOpts = extract_rebar_opts(File),
 
-  AdditionalIncludes = get_additional_includes(filename:dirname(File), OldOpts),
+  AllOpts = OldOpts ++ RebarOpts,
+
+  AdditionalIncludes = get_additional_includes(filename:dirname(File), AllOpts),
   CompileOpts = [{cwd, Cwd},
                  {outdir, OutDir},
                  binary,
                  debug_info,
-                 return|Opts] ++ OldOpts ++ AdditionalIncludes,
+                 return|Opts] ++ RebarOpts ++ AdditionalIncludes,
   %% Only compile to a binary to begin with since compile-options resulting in
   %% an output-file will cause the compile module to remove the existing beam-
   %% file even if compilation fails, in which case we end up with no module
@@ -401,6 +405,12 @@ project_data_dir() ->
   {ok, DataDir} = application:get_env(edts, project_data_dir),
   DataDir.
 
+project_compile_dir() ->
+  case application:get_env(edts, project_compile_dir) of
+    {ok, Dir} -> Dir;
+    _ -> undefined
+  end.
+
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -570,7 +580,11 @@ get_compile_outdir(File) ->
 
 get_compile_outdir(File, Opts) ->
   case proplists:get_value(outdir, Opts) of
-    undefined -> filename_to_outdir(File);
+    undefined ->
+      case project_compile_dir() of
+        undefined -> filename_to_outdir(File);
+        Dir -> Dir
+      end;
     OutDir    ->
       case filelib:is_dir(OutDir) of
         true  -> OutDir;
@@ -583,9 +597,48 @@ filename_to_outdir(File) ->
   EbinDir = filename:join([DirName, "..", "ebin"]),
   case filelib:is_dir(EbinDir) of
     true  -> EbinDir;
-    false -> DirName
+    false ->
+      rebar3_find_outdir(DirName)
   end.
 
+rebar3_find_outdir(DirName) ->
+  Parts = filename:split(DirName),
+  Build = lists:member("_build", Parts),
+  Test = lists:member("test", Parts),
+  Src = lists:member("src", Parts),
+  Root = rebar3_find_root(Parts),
+  case {Build, Src, Test}  of
+    {true, _, _} ->
+      rebar3_find_lib_outdir(Root);
+    {_, true, _} ->
+      rebar3_find_project_outdir(Root);
+    {_, _, true} ->
+      rebar3_find_test_outdir(Root)
+  end.
+
+rebar3_find_project_outdir(Root) ->
+  Project = lists:last(Root),
+  filename:join([filename:join(Root), "_build", "test", "lib", Project, "ebin"]).
+
+rebar3_find_test_outdir(Root) ->
+  Project = lists:last(Root),
+  filename:join([filename:join(Root), "_build", "test", "lib", Project, "test"]).
+
+rebar3_find_lib_outdir(Root) ->
+  filename:join([filename:join(Root), "ebin"]).
+
+rebar3_find_root(Parts) ->
+  Build = lists:member("_build", Parts),
+  Test = lists:member("test", Parts),
+  Src = lists:member("src", Parts),
+  case {Build, Src, Test} of
+    {true, _, _} ->
+      lists:takewhile(fun(X) -> X /= "_build" end, Parts);
+    {_, true, _} ->
+      lists:takewhile(fun(X) -> X /= "src" end, Parts);
+    {_, _, true} ->
+      lists:takewhile(fun(X) -> X /= "test" end, Parts)
+  end.
 
 %%------------------------------------------------------------------------------
 %% @equiv get_module_source(M, M:module_info()).
@@ -807,6 +860,22 @@ extract_compile_opt_p({d,               _, _}) -> true;
 extract_compile_opt_p(export_all)              -> true;
 extract_compile_opt_p({no_auto_import,  _})    -> true;
 extract_compile_opt_p(_)                       -> false.
+
+extract_rebar_opts(File) ->
+  Parts = filename:split(File),
+  Root = rebar3_find_root(Parts),
+  RebarFile = filename:join(Root ++ ["rebar.config"]),
+
+  case filelib:is_file(RebarFile) of
+    true ->
+      {ok, Terms} = file:consult(RebarFile),
+      case lists:keyfind(erl_opts, 1, Terms) of
+        {erl_opts, Value} -> Value;
+        _ -> []
+      end;
+    false ->
+      []
+  end.
 
 %%%_* Unit tests ===============================================================
 
