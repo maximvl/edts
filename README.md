@@ -1,3 +1,11 @@
+# This is a fork of original EDTS repo which is currently unmaintained #
+
+Main changes:
+- Better Rebar3 projects support
+- Elixir dependencies don't break things
+- Server is using Cowboy instead of Mochiweb
+
+
                                      __    __
                                     |  \  |  \
                       ______    ____| $$ _| $$_     _______
