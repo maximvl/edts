@@ -630,7 +630,11 @@ get_module_source_from_beam(M) ->
     [Dir|Rest] = lists:reverse(SplitPath),
     SrcAbs =
       case Dir of
-        "ebin" -> filename:join(lists:reverse(Rest) ++ ["src", SrcFile]);
+        "ebin" ->
+          SrcDir = filename:join(lists:reverse(["src" | Rest])),
+          Subdirs = get_subdirs(SrcDir),
+          Candidates = [filename:join([D, SrcFile]) || D <- [SrcDir | Subdirs]],
+          hd([C || C <- Candidates, filelib:is_regular(C)]);
         _      -> filename:join(SplitPath ++ [SrcFile])
       end,
     true = filelib:is_regular(SrcAbs),
@@ -639,6 +643,9 @@ get_module_source_from_beam(M) ->
     error:_ -> {error, not_found}
   end.
 
+get_subdirs(Path) ->
+  {ok, Items} = file:list_dir(Path),
+  [filename:join(Path, I) || I <- Items, filelib:is_dir(filename:join([Path, I]))].
 
 %%------------------------------------------------------------------------------
 %% @doc Format compiler errors and warnings.
